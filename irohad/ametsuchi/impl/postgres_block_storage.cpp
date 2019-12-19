@@ -47,6 +47,13 @@ bool PostgresBlockStorage::insert(
   log_->debug("insert block {}: {}", inserted_height, b);
   try {
     st.execute(true);
+
+    // update the range cache
+    assert(getBlockHeightsRange());
+    getBlockHeightsRange() | [this](HeightRange old_range) {
+      block_height_range_cache_ = HeightRange{old_range.min, old_range.max + 1};
+    };
+
     return true;
   } catch (const std::exception &e) {
     log_->warn(
@@ -109,6 +116,10 @@ void PostgresBlockStorage::clear() {
   soci::statement st = (sql.prepare << "TRUNCATE " << table_);
   try {
     st.execute(true);
+
+    // update the range cache
+    block_height_range_cache_ = boost::none;
+
   } catch (const std::exception &e) {
     log_->warn("Failed to clear {} table, reason {}", table_, e.what());
   }
@@ -116,8 +127,8 @@ void PostgresBlockStorage::clear() {
 
 void PostgresBlockStorage::forEach(
     iroha::ametsuchi::BlockStorage::FunctionType function) const {
-  soci::session sql(*pool_wrapper_->connection_pool_);
   getBlockHeightsRange() | [this, &function](auto range) {
+    soci::session sql(*pool_wrapper_->connection_pool_);
     while (range.min <= range.max) {
       function(*this->fetch(range.min));
       ++range.min;
@@ -127,24 +138,25 @@ void PostgresBlockStorage::forEach(
 
 boost::optional<PostgresBlockStorage::HeightRange>
 PostgresBlockStorage::getBlockHeightsRange() const {
-  // TODO: IR-577 Add caching if it will gain a performance boost
-  // luckychess 29.06.2019
-  soci::session sql(*pool_wrapper_->connection_pool_);
-  using QueryTuple =
-      boost::tuple<boost::optional<size_t>, boost::optional<size_t>>;
-  QueryTuple row;
-  try {
-    sql << "SELECT MIN(height), MAX(height) FROM " << table_, soci::into(row);
-  } catch (const std::exception &e) {
-    log_->error("Failed to execute query: {}", e.what());
-    return boost::none;
+  if (not block_height_range_cache_) {
+    soci::session sql(*pool_wrapper_->connection_pool_);
+    using QueryTuple =
+        boost::tuple<boost::optional<size_t>, boost::optional<size_t>>;
+    QueryTuple row;
+    try {
+      sql << "SELECT MIN(height), MAX(height) FROM " << table_, soci::into(row);
+    } catch (const std::exception &e) {
+      log_->error("Failed to execute query: {}", e.what());
+      return boost::none;
+    }
+    return rebind(viewQuery<QueryTuple>(row)) | [this](auto row) {
+      return iroha::ametsuchi::apply(row, [this](size_t min, size_t max) {
+        assert(max >= min);
+        return block_height_range_cache_ = HeightRange{min, max};
+      });
+    };
   }
-  return rebind(viewQuery<QueryTuple>(row)) | [](auto row) {
-    return iroha::ametsuchi::apply(row, [](size_t min, size_t max) {
-      assert(max >= min);
-      return boost::make_optional(HeightRange{min, max});
-    });
-  };
+  return block_height_range_cache_;
 }
 
 PostgresTemporaryBlockStorage::PostgresTemporaryBlockStorage(

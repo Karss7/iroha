@@ -47,6 +47,8 @@ namespace iroha {
       /// Get the range of stored block heights.
       boost::optional<HeightRange> getBlockHeightsRange() const;
 
+      mutable boost::optional<HeightRange> block_height_range_cache_;
+
      protected:
       std::shared_ptr<PoolWrapper> pool_wrapper_;
       std::shared_ptr<BlockTransportFactory> block_factory_;
