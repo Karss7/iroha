@@ -87,6 +87,9 @@ namespace iroha {
      */
     template <typename V, typename E>
     class Result : ResultBase, public boost::variant<Value<V>, Error<E>> {
+      template <typename OV, typename OE>
+      friend class Result;
+
       using variant_type = boost::variant<Value<V>, Error<E>>;
       using variant_type::variant_type;  // inherit constructors
 
@@ -96,6 +99,22 @@ namespace iroha {
 
       using ValueInnerType = V;
       using ErrorInnerType = E;
+
+      template <typename OV, typename OE>
+      Result(Result<OV, OE> r)
+          : Result(visit_in_place(std::move(r),
+                                  [](Value<OV> &v) -> Result<V, E> {
+                                    return ValueType{std::move(v.value)};
+                                  },
+                                  [](Value<OV> &&v) -> Result<V, E> {
+                                    return ValueType{std::move(v.value)};
+                                  },
+                                  [](Error<OE> &e) -> Result<V, E> {
+                                    return ErrorType{std::move(e.error)};
+                                  },
+                                  [](Error<OE> &&e) -> Result<V, E> {
+                                    return ErrorType{std::move(e.error)};
+                                  })) {}
 
       /**
        * match is a function which allows working with result's underlying

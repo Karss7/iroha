@@ -11,6 +11,7 @@
 #include "ametsuchi/command_executor.hpp"
 #include "ametsuchi/mutable_storage.hpp"
 #include "ametsuchi/storage.hpp"
+#include "common/result.hpp"
 #include "interfaces/iroha_internal/block.hpp"
 
 namespace {
@@ -56,7 +57,9 @@ namespace {
    */
   class BlockStorageStubFactory : public iroha::ametsuchi::BlockStorageFactory {
    public:
-    std::unique_ptr<iroha::ametsuchi::BlockStorage> create() override {
+    iroha::expected::Result<std::unique_ptr<iroha::ametsuchi::BlockStorage>,
+                            std::string>
+    create() override {
       return std::make_unique<BlockStorageStub>();
     }
   };

@@ -271,46 +271,47 @@ Irohad::RunResult Irohad::initStorage(
           []() { return generator::randomString(20); },
           log_manager_->getChild("TemporaryBlockStorage")->getLogger());
 
-  std::unique_ptr<BlockStorage> persistent_block_storage;
-  if (block_store_dir_) {
-    auto flat_file = FlatFile::create(
-        *block_store_dir_, log_manager_->getChild("FlatFile")->getLogger());
-    if (not flat_file) {
-      return expected::makeError(
-          "Unable to create FlatFile for persistent storage");
+  return [&]() -> iroha::expected::Result<std::unique_ptr<BlockStorage>,
+                                          std::string> {
+    if (block_store_dir_) {
+      return FlatFile::create(*block_store_dir_,
+                              log_manager_->getChild("FlatFile")->getLogger())
+          | [&](auto &&flat_file) {
+              std::shared_ptr<shared_model::interface::BlockJsonConverter>
+                  block_converter = std::make_shared<
+                      shared_model::proto::ProtoBlockJsonConverter>();
+              return std::make_unique<FlatFileBlockStorage>(
+                  std::move(flat_file),
+                  block_converter,
+                  log_manager_->getChild("FlatFileBlockStorage")->getLogger());
+            };
+    } else {
+      auto sql =
+          std::make_unique<soci::session>(*pool_wrapper_->connection_pool_);
+      const std::string persistent_table("blocks");
+      return PostgresBlockStorageFactory::createTable(*sql, persistent_table) |
+          [&] {
+            return PostgresBlockStorage::create(pool_wrapper_,
+                                                block_transport_factory,
+                                                persistent_table,
+                                                false,
+                                                log_);
+          };
     }
-    std::shared_ptr<shared_model::interface::BlockJsonConverter>
-        block_converter =
-            std::make_shared<shared_model::proto::ProtoBlockJsonConverter>();
-    persistent_block_storage = std::make_unique<FlatFileBlockStorage>(
-        std::move(flat_file.get()),
-        block_converter,
-        log_manager_->getChild("FlatFileBlockStorage")->getLogger());
-  } else {
-    auto sql =
-        std::make_unique<soci::session>(*pool_wrapper_->connection_pool_);
-    const std::string persistent_table("blocks");
-
-    auto create_table_result =
-        PostgresBlockStorageFactory::createTable(*sql, persistent_table);
-    if (boost::get<expected::Error<std::string>>(&create_table_result)) {
-      return create_table_result;
-    }
-    persistent_block_storage = std::make_unique<PostgresBlockStorage>(
-        pool_wrapper_, block_transport_factory, persistent_table, log_);
-  }
-  return StorageImpl::create(std::move(pg_opt),
-                             pool_wrapper_,
-                             perm_converter,
-                             pending_txs_storage_,
-                             query_response_factory_,
-                             std::move(temporary_block_storage_factory),
-                             std::move(persistent_block_storage),
-                             log_manager_->getChild("Storage"))
-             | [&](auto &&v) -> RunResult {
-    storage = std::move(v);
-    log_->info("[Init] => storage");
-    return {};
+  }() | [&](auto &&persistent_block_storage) {
+    return StorageImpl::create(std::move(pg_opt),
+                               pool_wrapper_,
+                               perm_converter,
+                               pending_txs_storage_,
+                               query_response_factory_,
+                               std::move(temporary_block_storage_factory),
+                               std::move(persistent_block_storage),
+                               log_manager_->getChild("Storage"))
+               | [&](auto &&v) -> RunResult {
+      storage = std::move(v);
+      log_->info("[Init] => storage");
+      return {};
+    };
   };
 }
 
