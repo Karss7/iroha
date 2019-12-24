@@ -84,7 +84,8 @@ class IrohadTest : public AcceptanceFixture {
 
   void SetUp() override {
     setPaths();
-    root_ca_ = readFile(path_root_certificate_);
+    root_ca_ =
+        iroha::readTextFile(path_root_certificate_.string()).assumeValue();
 
     rapidjson::Document doc;
     std::ifstream ifs_iroha(path_config_.string());
@@ -167,7 +168,7 @@ class IrohadTest : public AcceptanceFixture {
       iroha_process_->terminate();
     }
 
-    framework::expected::assertResultValue(
+    IROHA_ASSERT_RESULT_VALUE(
         iroha::ametsuchi::PgConnectionInit::dropWorkingDatabase(
             iroha::ametsuchi::PostgresOptions{pgopts_, db_name_, log_}));
 
@@ -217,20 +218,24 @@ class IrohadTest : public AcceptanceFixture {
   }
 
   void prepareTestData() {
-    ASSERT_TRUE(boost::filesystem::create_directory(test_data_path_));
+    ASSERT_TRUE(boost::filesystem::create_directory(test_data_path_))
+        << "Could not create directory " << test_data_path_ << ".";
 
-    ASSERT_TRUE(keys_manager_admin_.createKeys());
-    ASSERT_TRUE(keys_manager_node_.createKeys());
-    ASSERT_TRUE(keys_manager_testuser_.createKeys());
+    ASSERT_TRUE(keys_manager_admin_.createKeys(boost::none));
+    ASSERT_TRUE(keys_manager_node_.createKeys(boost::none));
+    ASSERT_TRUE(keys_manager_testuser_.createKeys(boost::none));
 
-    auto admin_keys = keys_manager_admin_.loadKeys();
-    ASSERT_TRUE(admin_keys);
+    auto admin_keys_result = keys_manager_admin_.loadKeys(boost::none);
+    IROHA_ASSERT_RESULT_VALUE(admin_keys_result);
+    auto admin_keys = std::move(admin_keys_result).assumeValue();
 
-    auto node0_keys = keys_manager_node_.loadKeys();
-    ASSERT_TRUE(node0_keys);
+    auto node0_keys_result = keys_manager_node_.loadKeys(boost::none);
+    IROHA_ASSERT_RESULT_VALUE(node0_keys_result);
+    auto node0_keys = std::move(node0_keys_result).assumeValue();
 
-    auto user_keys = keys_manager_testuser_.loadKeys();
-    ASSERT_TRUE(user_keys);
+    auto user_keys_result = keys_manager_testuser_.loadKeys(boost::none);
+    IROHA_ASSERT_RESULT_VALUE(user_keys_result);
+    auto user_keys = std::move(user_keys_result).assumeValue();
 
     shared_model::interface::RolePermissionSet admin_perms{
         shared_model::interface::permissions::Role::kAddPeer,
@@ -274,19 +279,19 @@ class IrohadTest : public AcceptanceFixture {
         shared_model::proto::TransactionBuilder()
             .creatorAccountId(kAdminId)
             .createdTime(iroha::time::now())
-            .addPeer("0.0.0.0:10001", node0_keys.get().publicKey())
+            .addPeer("0.0.0.0:10001", node0_keys.publicKey())
             .createRole(kAdminName, admin_perms)
             .createRole(kDefaultRole, default_perms)
             .createRole(kMoneyCreator, money_perms)
             .createDomain(kDomain, kDefaultRole)
             .createAsset(kAssetName, kDomain, 2)
-            .createAccount(kAdminName, kDomain, admin_keys.get().publicKey())
-            .createAccount(kUser, kDomain, user_keys.get().publicKey())
+            .createAccount(kAdminName, kDomain, admin_keys.publicKey())
+            .createAccount(kUser, kDomain, user_keys.publicKey())
             .appendRole(kAdminId, kAdminName)
             .appendRole(kAdminId, kMoneyCreator)
             .quorum(1)
             .build()
-            .signAndAddSignature(node0_keys.get())
+            .signAndAddSignature(node0_keys)
             .finish();
 
     auto genesis_block =
@@ -298,7 +303,7 @@ class IrohadTest : public AcceptanceFixture {
                 shared_model::crypto::Blob("")))
             .createdTime(iroha::time::now())
             .build()
-            .signAndAddSignature(node0_keys.get())
+            .signAndAddSignature(node0_keys)
             .finish();
 
     std::ofstream output_file(path_genesis_.string());
@@ -374,17 +379,6 @@ class IrohadTest : public AcceptanceFixture {
     config_copy_ = path_config_.string() + std::string(".copy");
   }
 
-  std::string readFile(const boost::filesystem::path &path) {
-    std::ifstream file(path.string());
-    if (not file) {
-      throw std::runtime_error(std::string{"Can not read file '"}
-                               + path.string() + "'");
-    }
-    std::stringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
-  }
-
  public:
   boost::filesystem::path irohad_executable;
   const std::chrono::milliseconds kTimeout = 30s;
@@ -445,11 +439,11 @@ TEST_F(IrohadTest, RunIrohad) {
 TEST_F(IrohadTest, SendTx) {
   launchIroha();
 
-  auto key_pair = keys_manager_admin_.loadKeys();
-  ASSERT_TRUE(key_pair);
+  auto key_pair = keys_manager_admin_.loadKeys(boost::none);
+  IROHA_ASSERT_RESULT_VALUE(key_pair);
 
   SCOPED_TRACE("From send transaction test");
-  sendDefaultTxAndCheck(key_pair.get());
+  sendDefaultTxAndCheck(std::move(key_pair).assumeValue());
 }
 
 /**
@@ -463,11 +457,11 @@ TEST_F(IrohadTest, SendTx) {
 TEST_F(IrohadTest, SendTxSecure) {
   launchIroha();
 
-  auto key_pair = keys_manager_admin_.loadKeys();
-  ASSERT_TRUE(key_pair);
+  auto key_pair = keys_manager_admin_.loadKeys(boost::none);
+  IROHA_ASSERT_RESULT_VALUE(key_pair);
 
   SCOPED_TRACE("From secure send transaction test");
-  sendDefaultTxAndCheck(key_pair.get(), true);
+  sendDefaultTxAndCheck(std::move(key_pair).assumeValue(), true);
 }
 
 /**
@@ -480,10 +474,10 @@ TEST_F(IrohadTest, SendTxSecure) {
 TEST_F(IrohadTest, SendTxInsecureWithTls) {
   launchIroha();
 
-  auto key_pair = keys_manager_admin_.loadKeys();
-  ASSERT_TRUE(key_pair);
+  auto key_pair = keys_manager_admin_.loadKeys(boost::none);
+  IROHA_ASSERT_RESULT_VALUE(key_pair);
 
-  auto tx = createDefaultTx(*key_pair);
+  auto tx = createDefaultTx(std::move(key_pair).assumeValue());
 
   auto client = createToriiClient(false, kSecurePort);
   auto response = client.Torii(tx.getTransport());
@@ -503,11 +497,12 @@ TEST_F(IrohadTest, SendTxInsecureWithTls) {
 TEST_F(IrohadTest, SendQuery) {
   launchIroha();
 
-  auto key_pair = keys_manager_admin_.loadKeys();
-  ASSERT_TRUE(key_pair);
+  auto key_pair = keys_manager_admin_.loadKeys(boost::none);
+  IROHA_ASSERT_RESULT_VALUE(key_pair);
 
   iroha::protocol::QueryResponse response;
-  auto query = complete(baseQry(kAdminId).getRoles(), key_pair.get());
+  auto query =
+      complete(baseQry(kAdminId).getRoles(), std::move(key_pair).assumeValue());
   auto client = torii_utils::QuerySyncClient(kAddress, kPort);
   client.Find(query.getTransport(), response);
   shared_model::proto::QueryResponse resp{std::move(response)};
@@ -529,11 +524,12 @@ TEST_F(IrohadTest, SendQuery) {
 TEST_F(IrohadTest, RestartWithOverwriteLedger) {
   launchIroha();
 
-  auto key_pair = keys_manager_admin_.loadKeys();
-  ASSERT_TRUE(key_pair);
+  auto key_pair_result = keys_manager_admin_.loadKeys(boost::none);
+  IROHA_ASSERT_RESULT_VALUE(key_pair_result);
+  auto key_pair = std::move(key_pair_result).assumeValue();
 
   SCOPED_TRACE("From restart with --overwrite-ledger flag test");
-  sendDefaultTxAndCheck(key_pair.get());
+  sendDefaultTxAndCheck(key_pair);
 
   iroha_process_->terminate();
 
@@ -545,7 +541,7 @@ TEST_F(IrohadTest, RestartWithOverwriteLedger) {
   ASSERT_EQ(getBlockCount(), 1);
 
   SCOPED_TRACE("From restart with --overwrite-ledger flag test");
-  sendDefaultTxAndCheck(key_pair.get());
+  sendDefaultTxAndCheck(key_pair);
 }
 
 /**
@@ -560,11 +556,12 @@ TEST_F(IrohadTest, RestartWithOverwriteLedger) {
 TEST_F(IrohadTest, RestartWithoutResetting) {
   launchIroha();
 
-  auto key_pair = keys_manager_admin_.loadKeys();
-  ASSERT_TRUE(key_pair);
+  auto key_pair_result = keys_manager_admin_.loadKeys(boost::none);
+  IROHA_ASSERT_RESULT_VALUE(key_pair_result);
+  auto key_pair = std::move(key_pair_result).assumeValue();
 
   SCOPED_TRACE("From restart without resetting test");
-  sendDefaultTxAndCheck(key_pair.get());
+  sendDefaultTxAndCheck(key_pair);
 
   int height = getBlockCount();
 
@@ -575,5 +572,5 @@ TEST_F(IrohadTest, RestartWithoutResetting) {
   ASSERT_EQ(getBlockCount(), height);
 
   SCOPED_TRACE("From restart without resetting test");
-  sendDefaultTxAndCheck(key_pair.get());
+  sendDefaultTxAndCheck(key_pair);
 }
