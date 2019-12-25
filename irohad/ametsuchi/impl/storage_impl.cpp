@@ -89,7 +89,8 @@ namespace iroha {
           log_manager_->getChild("TemporaryWorldStateView"));
     }
 
-    std::unique_ptr<MutableStorage> StorageImpl::createMutableStorage(
+    expected::Result<std::unique_ptr<MutableStorage>, std::string>
+    StorageImpl::createMutableStorage(
         std::shared_ptr<CommandExecutor> command_executor) {
       return createMutableStorage(std::move(command_executor),
                                   *temporary_block_storage_factory_);
@@ -141,22 +142,21 @@ namespace iroha {
               log_manager->getLogger()));
     }
 
-    bool StorageImpl::insertBlock(
+    expected::Result<void, std::string> StorageImpl::insertBlock(
         std::shared_ptr<const shared_model::interface::Block> block) {
       log_->info("create mutable storage");
-      return createCommandExecutor().match(
-          [&, this](auto &&command_executor) {
-            auto mutable_storage =
-                this->createMutableStorage(std::move(command_executor).value);
-            bool is_inserted = mutable_storage->apply(block);
-            log_->info("Block {}inserted", is_inserted ? "" : "not ");
-            this->commit(std::move(mutable_storage));
-            return is_inserted;
-          },
-          [&](const auto &error) {
-            log_->error("Block insertion failed: {}", error.error);
-            return false;
-          });
+      return createCommandExecutor() | [&](auto &&command_executor) {
+        return createMutableStorage(std::move(command_executor)) |
+                   [&](auto &&mutable_storage)
+                   -> expected::Result<void, std::string> {
+          const bool is_inserted = mutable_storage->apply(block);
+          commit(std::move(mutable_storage));
+          if (is_inserted) {
+            return {};
+          }
+          return "Stateful validation failed.";
+        };
+      };
     }
 
     expected::Result<void, std::string> StorageImpl::insertPeer(
@@ -178,7 +178,8 @@ namespace iroha {
                                                        perm_converter_);
     }
 
-    std::unique_ptr<MutableStorage> StorageImpl::createMutableStorage(
+    expected::Result<std::unique_ptr<MutableStorage>, std::string>
+    StorageImpl::createMutableStorage(
         std::shared_ptr<CommandExecutor> command_executor,
         BlockStorageFactory &storage_factory) {
       auto postgres_command_executor =

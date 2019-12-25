@@ -14,6 +14,7 @@
 #include "ametsuchi/temporary_wsv.hpp"
 #include "builders/protobuf/transaction.hpp"
 #include "framework/result_fixture.hpp"
+#include "framework/result_gtest_checkers.hpp"
 #include "framework/test_logger.hpp"
 #include "framework/test_subscriber.hpp"
 #include "module/shared_model/builders/protobuf/test_block_builder.hpp"
@@ -357,7 +358,7 @@ TEST_F(AmetsuchiTest, TestingStorageWhenInsertBlock) {
   log->info("Try insert block");
 
   auto inserted = storage->insertBlock(getBlock());
-  ASSERT_TRUE(inserted);
+  IROHA_ASSERT_RESULT_VALUE(inserted);
 
   log->info("Request ledger information");
 

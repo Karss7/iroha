@@ -56,7 +56,7 @@ namespace iroha {
             std::make_shared<shared_model::proto::ProtoQueryResponseFactory>();
         auto block_storage_factory =
             std::make_unique<InMemoryBlockStorageFactory>();
-        auto block_storage = block_storage_factory->create();
+        auto block_storage = block_storage_factory->create().assumeValue();
 
         reconnection_strategy_factory_ = std::make_unique<
             iroha::ametsuchi::KTimesReconnectionStrategyFactory>(0);
@@ -141,7 +141,7 @@ namespace iroha {
 
       /// Create mutable storage from initialized storage
       std::unique_ptr<ametsuchi::MutableStorage> createMutableStorage() {
-        return storage->createMutableStorage(command_executor);
+        return storage->createMutableStorage(command_executor).assumeValue();
       }
 
      protected:

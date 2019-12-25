@@ -7,6 +7,7 @@
 #include "ametsuchi/impl/in_memory_block_storage_factory.hpp"
 
 #include <gtest/gtest.h>
+#include "framework/result_gtest_checkers.hpp"
 #include "module/shared_model/interface_mocks.hpp"
 
 using namespace iroha::ametsuchi;
@@ -38,7 +39,7 @@ class InMemoryBlockStorageTest : public ::testing::Test {
 TEST(InMemoryBlockStorageFactoryTest, Creation) {
   InMemoryBlockStorageFactory factory;
 
-  ASSERT_TRUE(factory.create());
+  IROHA_ASSERT_RESULT_VALUE(factory.create());
 }
 
 /**

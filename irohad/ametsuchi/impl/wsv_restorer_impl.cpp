@@ -106,17 +106,19 @@ namespace iroha {
                  [&storage](auto &&command_executor) -> CommitResult {
         BlockStorageStubFactory storage_factory;
 
-        auto mutable_storage = storage.createMutableStorage(
-            std::move(command_executor), storage_factory);
-        auto block_query = storage.getBlockQuery();
-        if (not block_query) {
-          return expected::makeError("Cannot create BlockQuery");
-        }
+        return storage.createMutableStorage(std::move(command_executor),
+                                            storage_factory)
+                   | [&storage](auto &&mutable_storage) -> CommitResult {
+          auto block_query = storage.getBlockQuery();
+          if (not block_query) {
+            return expected::makeError("Cannot create BlockQuery");
+          }
 
-        return storage.resetWsv() |
-            [&storage, &mutable_storage, &block_query]() {
-              return reindexBlocks(storage, mutable_storage, block_query);
-            };
+          return storage.resetWsv() |
+              [&storage, &mutable_storage, &block_query]() {
+                return reindexBlocks(storage, mutable_storage, block_query);
+              };
+        };
       };
     }
   }  // namespace ametsuchi

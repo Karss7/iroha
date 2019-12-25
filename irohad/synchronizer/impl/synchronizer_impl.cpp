@@ -12,6 +12,7 @@
 #include "ametsuchi/command_executor.hpp"
 #include "ametsuchi/mutable_storage.hpp"
 #include "common/bind.hpp"
+#include "common/result.hpp"
 #include "common/visitor.hpp"
 #include "interfaces/iroha_internal/block.hpp"
 #include "logger/logger.hpp"
@@ -89,7 +90,11 @@ namespace iroha {
         const PublicKeysRange &public_keys) {
       // TODO andrei 17.10.18 IR-1763 Add delay strategy for loading blocks
       for (const auto &public_key : public_keys) {
-        auto storage = getStorage();
+        auto storage_result = getStorage();
+        if (iroha::expected::hasError(storage_result)) {
+          return std::move(storage_result).assumeError();
+        }
+        auto storage = std::move(storage_result).assumeValue();
 
         shared_model::interface::types::HeightType my_height = start_height;
         auto network_chain =
@@ -107,7 +112,9 @@ namespace iroha {
           "Failed to download and commit blocks from given peers");
     }
 
-    std::unique_ptr<ametsuchi::MutableStorage> SynchronizerImpl::getStorage() {
+    iroha::expected::Result<std::unique_ptr<ametsuchi::MutableStorage>,
+                            std::string>
+    SynchronizerImpl::getStorage() {
       return mutable_factory_->createMutableStorage(command_executor_);
     }
 
@@ -133,18 +140,22 @@ namespace iroha {
                     return false;
                   });
       if (not committed_prepared) {
-        auto storage = getStorage();
-        if (storage->apply(msg.block)) {
-          mutable_factory_->commit(std::move(storage))
-              .match(
-                  [&notify](auto &&value) { notify(std::move(value.value)); },
-                  [this](const auto &error) {
-                    this->log_->error("Failed to commit mutable storage: {}",
-                                      error.error);
-                  });
-        } else {
-          log_->warn("Block was not committed due to fail in mutable storage");
-        }
+        auto commit_result =
+            getStorage() | [&](auto &&storage) -> ametsuchi::CommitResult {
+          if (storage->apply(msg.block)) {
+            return mutable_factory_->commit(std::move(storage));
+          } else {
+            return "Block failed to apply.";
+          }
+        };
+        std::move(commit_result)
+            .match(
+                [&notify](auto &&ledger_state) {
+                  notify(std::move(ledger_state.value));
+                },
+                [this](const auto &error) {
+                  this->log_->error("Failed to commit: {}", error.error);
+                });
       }
     }
 
