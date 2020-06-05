@@ -112,7 +112,7 @@ macro(add_install_step_for_bin target)
   install(TARGETS ${target}
       RUNTIME DESTINATION bin
       CONFIGURATIONS ${CMAKE_BUILD_TYPE}
-      COMPONENT binaries)
+      COMPONENT iroha_binaries)
 endmacro()
 
 
@@ -124,7 +124,7 @@ macro(add_install_step_for_lib libpath)
   install(FILES ${lib_major_minor_patch}
       DESTINATION lib
       CONFIGURATIONS ${CMAKE_BUILD_TYPE}
-      COMPONENT libraries)
+      COMPONENT iroha_libraries)
 endmacro()
 
 
