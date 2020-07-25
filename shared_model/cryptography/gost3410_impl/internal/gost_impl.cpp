@@ -67,6 +67,7 @@ namespace shared_model::crypto::gost3410 {
 
     return signature;
   }
+  
 
   std::vector<uint8_t> sign(const std::string& msg, const uint8_t* priv, size_t privLen){
     return sign(reinterpret_cast<const uint8_t*>(msg.data()), msg.size(),
