@@ -69,7 +69,6 @@ namespace iroha {
     
     return signature;
   }
-  
 
   std::string sign(const std::string& msg, const uint8_t* priv, size_t privLen){
     auto sig = sign(reinterpret_cast<const uint8_t*>(msg.data()), msg.size(),
