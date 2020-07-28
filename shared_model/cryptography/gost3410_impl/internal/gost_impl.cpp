@@ -12,6 +12,44 @@
 #include <botan/x509_key.h>
 #include <botan/rng.h>
 #include <botan/data_src.h>
+<<<<<<< HEAD
+=======
+#include <botan/base64.h>
+#include <iostream>
+
+using shared_model::interface::types::PublicKeyByteRangeView;
+using shared_model::interface::types::SignatureByteRangeView;
+
+static const auto ECGName = std::string("gost_256A");
+static const auto EMSA = std::string("EMSA1(SHA-512)");
+
+namespace iroha {
+  sig_t sign(const uint8_t *msg,
+             size_t msgsize,
+             const pubkey_t &pub,
+             const privkey_t &priv) {
+    sig_t sig;
+
+    auto ds = Botan::DataSource_Memory(priv.data(), priv.size());
+    auto key = Botan::PKCS8::load_key(ds);
+
+    Botan::AutoSeeded_RNG rng;
+    Botan::PK_Signer signer(*key.get(), rng, EMSA);
+    signer.update(msg, msgsize);
+    std::vector<uint8_t> signature = signer.signature(rng);
+    
+    assert(signature.size() == iroha::sig_t::size());
+    std::copy_n(sig.begin(), signature.size(), signature.begin());
+    
+
+    return sig;
+  }
+
+  sig_t sign(std::string_view msg, const pubkey_t &pub, const privkey_t &priv) {
+    return sign(
+        reinterpret_cast<const uint8_t *>(msg.data()), msg.size(), pub, priv);
+  }
+>>>>>>> temprorary test changes
 
 namespace shared_model::crypto::gost3410 {
   static const auto ECGName = std::string("gost_256A");
